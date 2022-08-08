@@ -18,6 +18,7 @@ const scoreLineContext = scoreLineCanvas.getContext('2d');
 var allYogaPoseInfo = []; // load from json file of pose info
 var currentLandmarksArray = []; // live update of output landmarks
 var currentScore = 0;
+var thisPoseHighScore = 0;
 
 var numberOfPosesThisWorkout = 0; // total number of poses in this workout
 var currentPoseInThisWorkout = 1; // track the current pose count starting at one
@@ -30,7 +31,11 @@ var workoutInProgress = false;
 var currentPoseScoreArray = []; // array of scores for each pose to calculate rolling average
 var currentPoseStartTime = 0; // set the start time of current pose
 
-var basePoseInfoFolderLocation = "sun_poses/";
+var basePoseInfoFolderLocation = "abs/";
+
+// display settings
+var showScoreLabels = false;
+var showTimeLabel = true;
 
 
 // ---------  END global variables ---------- //
@@ -153,15 +158,15 @@ function onResults(results) {
     userContext.drawImage(results.image, 0, 0, userCanvas.width, userCanvas.height);
     // updatePose();
     var individualAngleScores = getScores();
+
     drawConfirmationSquares();
     if (workoutInProgress) {
         drawLandmarkLines(currentLandmarksArray);
         drawScoreData();
         normalizedRecentScoreData();
         drawFeedbackCircles(individualAngleScores);
-        console.log("rolling average: " , calculateRollingAverageAndHighScore()[0], "high score: " , calculateRollingAverageAndHighScore()[1]);
-        console.log("current time for this pose: ", updateTimer());
-        document.getElementById("time").innerText = "Time:" + updateTimer();
+        updateTimer();
+
     }
 }
 
@@ -199,6 +204,17 @@ function updateTimer() {
     currentPoseEndTime = new Date().getTime();
     let timeDifference = currentPoseEndTime - currentPoseStartTime;
     let timeDifferenceInSeconds = timeDifference / 1000;
+    // round number to one decimal place
+    timeDifferenceInSeconds = Math.round(timeDifferenceInSeconds * 10) / 10;
+
+    // add .0 to time if it is exactly a whole number
+    if (timeDifferenceInSeconds % 1 === 0) {
+        timeDifferenceInSeconds = timeDifferenceInSeconds + ".0";
+    }
+    document.getElementById("time").innerText = "Time: " + timeDifferenceInSeconds;
+
+
+
     return timeDifferenceInSeconds;
 }
 
@@ -206,76 +222,131 @@ function updateTimer() {
 // update current pose info and images
 function updatePose() {
     currentPoseScoreArray = []; // clear the rolling average array for the next pose
+    thisPoseHighScore = 0; // clear the high score for the next pose
     document.getElementById("pose_count").innerText = currentPoseInThisWorkout + " of " + numberOfPosesThisWorkout;
     currentPoseStartTime = new Date().getTime();
     updateTargetImages();
 }
 function updateTargetImages() {
-    // clear the canvases first
-    // iterate all pose info and update the target images
-    for (let i = 0; i < allYogaPoseInfo.length; i++) {
-        if (allYogaPoseInfo[i].PoseNumber == currentPoseInThisWorkout) {
-            if (allYogaPoseInfo[i].FrontOrSide == "front") {
-                let frontImg = new Image();
-                frontImg.src = basePoseInfoFolderLocation + allYogaPoseInfo[i].RelativeLocation;
-                frontImg.onload = function () {
-                    targetContextFront.clearRect(0, 0, targetCanvasFront.width, targetCanvasFront.height);
-                    targetContextFront.drawImage(frontImg, 0, 0, targetCanvasFront.width, targetCanvasFront.height);
-                    // drawingContext.drawImage(frontImg, -100, 100, drawingCanvas.width, drawingCanvas.height);
-                }
+    function calculateImageCropArea(image, landmarks) {
+        let cropXBoarderAmount = image.width * 0.1;
+        let cropYBoarderAmount = image.height * 0.1;
+        //iterate landmarks array and calculate min and max x and y values for the image landmarks
+        let minX = image.width;
+        let maxX = 0;
+        let minY = image.height;
+        let maxY = 0;
+        for (let i = 0; i < landmarks.length; i++) {
+            if (landmarks[i][0] < minX) {
+                minX = landmarks[i][0];
             }
-            else if (allYogaPoseInfo[i].FrontOrSide == "side") {
-                let sideImg = new Image();
-                sideImg.src = basePoseInfoFolderLocation + allYogaPoseInfo[i].RelativeLocation;
-                sideImg.onload = function () {
-                    targetContextSide.clearRect(0, 0, targetCanvasSide.width, targetCanvasSide.height);
-                    targetContextSide.drawImage(sideImg, 0, 0, targetCanvasFront.width, targetCanvasFront.height);
-                }
+            if (landmarks[i][0] > maxX) {
+                maxX = landmarks[i][0];
+            }
+            if (landmarks[i][1] < minY) {
+                minY = landmarks[i][1];
+            }
+            if (landmarks[i][1] > maxY) {
+                maxY = landmarks[i][1];
             }
         }
+
+        let imageCropArea = {
+            sx: 0,
+            sy: 0,
+            swidth: 0,
+            sheight: 0
+        }
+        imageCropArea.sx = parseInt(image.width * minX - cropXBoarderAmount);
+        imageCropArea.sy = parseInt(image.height * minY - cropYBoarderAmount);
+        imageCropArea.swidth = parseInt(image.width * maxX + cropXBoarderAmount);
+        imageCropArea.sheight = parseInt(image.height * maxY + cropYBoarderAmount);
+        console.log("crop areas: " + imageCropArea.sx + " " + imageCropArea.sy + " " + imageCropArea.swidth + " " + imageCropArea.sheight + " " + minY + " " + maxY + " " + minX + " " + maxX);
+        return imageCropArea;
     }
-}
+    // iterate all pose info and update the target images
+    let usedFirstImage = false;
+    let usedBothImages = false;
+    function updateImage(canvas, context, i) {
+        canvas.width = window.innerWidth * .4;
+        canvas.height = window.innerHeight * .7;
+        let img = new Image();
+        img.src = basePoseInfoFolderLocation + allYogaPoseInfo[i].RelativeLocation;
+        img.onload = function () {
+            let imageCropArea = calculateImageCropArea(img, allYogaPoseInfo[i].Landmarks);
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            // detect if the image is wider than it is tall
+            // if (imageCropArea.swidth > imageCropArea.sheight) {
+            // }
+            // else {
+            // }
+            // calculate the y position to place the image on the canvas so the image is alligned with the bottom of the canvas
+            let yPosition = canvas.height - imageCropArea.sheight;
+            console.log("canvas height: " + canvas.height + " image height: " + imageCropArea.sheight + " y position: " + yPosition);
 
-function getScores() {
-    userDistances = CalculateLandmarkNormalizedDistances(convertLandmarkArrayToObject(currentLandmarksArray));
-    userAngles = CalculateAllAngles(convertLandmarkArrayToObject(currentLandmarksArray));
-    let minDistance = 100000000;
-    let minAngle = 100000000;
-    let bestIndividualAngleDifferencesArray = [];
-    for (let i = 0; i < allYogaPoseInfo.length; i++) {
-        if (allYogaPoseInfo[i].PoseNumber == currentPoseInThisWorkout) {
-            var targetLandmarks = allYogaPoseInfo[i].Landmarks;
-            var targetDistances = CalculateLandmarkNormalizedDistances(convertLandmarkArrayToObject(targetLandmarks));
-            var differenceScore = CalculateDistanceDifferences(userDistances, targetDistances);
-
-            var targetAngles = CalculateAllAngles(convertLandmarkArrayToObject(targetLandmarks));
-            var returneddifferenceAngle = CalculateAngleDifferences(userAngles, targetAngles, 0);
-            var differenceAngle = returneddifferenceAngle[0];
-            var returnedindividualAngleDifferences = returneddifferenceAngle[1];
+            context.drawImage(img, imageCropArea.sx, imageCropArea.sy, imageCropArea.swidth, imageCropArea.sheight, 0, 0, canvas.width, canvas.height);
         }
-        if (differenceScore < minDistance) {
-            minDistance = differenceScore;
-        }
-        if (differenceAngle < minAngle) {
-            minAngle = differenceAngle;
-            bestIndividualAngleDifferencesArray = returneddifferenceAngle[1];
-        }
-        if (scoreArray.length < 300 && minAngle > 10 && minAngle < 10000) {
-            scoreArray.push(formulaToCalculatePoseScore(minAngle));
+        if (usedFirstImage) {
+            usedBothImages = true;
         }
         else {
-            if (minAngle > 10 && minAngle < 10000) {
-                scoreArray.shift();
-                scoreArray.push(formulaToCalculatePoseScore(minAngle));
-            }
+            usedFirstImage = true;
         }
     }
-    return bestIndividualAngleDifferencesArray;
+    for (let i = 0; i < allYogaPoseInfo.length; i++) {
+        if (allYogaPoseInfo[i].PoseNumber == currentPoseInThisWorkout) {
+            // check if there is a front image first, then right, then left, then back
+            if (allYogaPoseInfo[i].FrontOrSide == "front" && usedBothImages == false) {
+                if (usedFirstImage == false) {
+                updateImage(targetCanvasFront, targetContextFront, i);
+                }
+                else {
+                    updateImage(targetCanvasSide, targetContextSide, i);
+                }
+            }
+            else if (allYogaPoseInfo[i].FrontOrSide == "right" && usedBothImages == false) {
+                if (usedFirstImage == false) {
+                updateImage(targetCanvasFront, targetContextFront, i);
+                }
+                else {
+                    updateImage(targetCanvasSide, targetContextSide, i);
+                }
+            }
+            else if (allYogaPoseInfo[i].FrontOrSide == "left" && usedBothImages == false) {
+                if (usedFirstImage == false) {
+                updateImage(targetCanvasFront, targetContextFront, i);
+                }
+                else {
+                    updateImage(targetCanvasSide, targetContextSide, i);
+                }
+            }
+            else if (allYogaPoseInfo[i].FrontOrSide == "back" && usedBothImages == false) {
+                if (usedFirstImage == false) {
+                updateImage(targetCanvasFront, targetContextFront, i);
+                }
+                else {
+                    updateImage(targetCanvasSide, targetContextSide, i);
+                }
+            }
+
+            // else if (allYogaPoseInfo[i].FrontOrSide == "side") {
+            //     let sideImg = new Image();
+            //     sideImg.src = basePoseInfoFolderLocation + allYogaPoseInfo[i].RelativeLocation;
+            //     sideImg.onload = function () {
+            //         let imageCropArea = calculateImageCropArea(sideImg, allYogaPoseInfo[i].Landmarks);
+            //         targetContextSide.clearRect(0, 0, targetCanvasSide.width, targetCanvasSide.height);
+
+            //         // targetContextSide.drawImage(sideImg, 0, 0, targetCanvasFront.width, targetCanvasFront.height);
+
+            //         targetContextSide.drawImage(sideImg, imageCropArea.sx, imageCropArea.sy, imageCropArea.swidth, imageCropArea.sheight, 0, 0, targetCanvasSide.width, targetCanvasSide.height);
+
+            //     }
+            // }
+        }
+    }
 }
 
-function formulaToCalculatePoseScore(angle){
-    return parseInt(((1500 - parseInt(angle)) / 10));
-}
+
 
 
 // capture still image from camera
@@ -433,9 +504,16 @@ function startWorkout() {
         timerToSaveData();
         saveWorkoutData = true;
     }
-    let scoreClasses = document.getElementsByClassName("score_info");
-    for(let i = 0; i < scoreClasses.length; i++) {
-        scoreClasses[i].style.visibility = "visible";
+    if (showScoreLabels) {
+        let scoreClasses = document.getElementsByClassName("score_info");
+        for (let i = 0; i < scoreClasses.length; i++) {
+            scoreClasses[i].style.visibility = "visible";
+        }
+    }
+    else if (showTimeLabel) {
+        document.getElementById("time").style.top = "90%";
+        document.getElementById("time").style.visibility = "visible";
+
     }
 }
 
@@ -447,7 +525,7 @@ function workoutFinished() {
     targetContextFront.clearRect(0, 0, targetCanvasFront.width, targetCanvasFront.height);
     scoreLineContext.clearRect(0, 0, scoreLineCanvas.width, scoreLineCanvas.height);
     let scoreClass = document.getElementsByClassName("score_info");
-    for(let i = 0; i < scoreClass.length; i++) {
+    for (let i = 0; i < scoreClass.length; i++) {
         scoreClass[i].style.visibility = "hidden";
     }
     parseWorkoutData(allWorkoutData);
@@ -458,8 +536,10 @@ var scoreArray = [];
 var normalizedScoreArray = [];
 // draw score data on canvas
 function drawScoreData() {
+    document.getElementById("score_line").style.zIndex = 1;
     scoreLineContext.clearRect(0, 0, scoreLineCanvas.width, scoreLineCanvas.height);
     // draw background line with darker color
+    let scoreArray = currentPoseScoreArray;
     let lowerLimit = 80;
     let upperLimit = 100;
     let colorSolidChoices = ['red', 'orange', 'green'];
@@ -495,15 +575,50 @@ function drawScoreData() {
     scoreLineContext.lineWidth = 3;
     scoreLineContext.beginPath();
     scoreLineContext.moveTo(0, scoreLineCanvas.height);
+    let moveToX = 0;
+    let moveToY = 0;
     for (let i = 0; i < scoreArray.length; i++) {
-        let moveToX = parseInt(scoreLineCanvas.width / (scoreArray.length / (i + 1)));
-        let moveToY = parseInt(scoreLineCanvas.height - (4 * (scoreArray[i] - 50)));
+        moveToX = parseInt(scoreLineCanvas.width / (scoreArray.length / (i + 1)));
+        moveToY = parseInt(scoreLineCanvas.height - (4 * (scoreArray[i] - 50)));
         if (moveToY < 10000) {
             scoreLineContext.lineTo(moveToX, moveToY);
         }
     }
     scoreLineContext.fill();
     scoreLineContext.stroke();
+    document.getElementById("now_line_lable").style.left = "95%";
+    document.getElementById("now_line_lable").style.top = (moveToY - 10) + "px";
+
+    // draw high score line
+    let highScore = calculateRollingAverageAndHighScore()[1];
+    scoreLineContext.fillStyle = "rgba(0, 255, 50, 0)";
+    scoreLineContext.strokeStyle = [colorStrokeChoices[selectionChoice]];
+    scoreLineContext.lineWidth = 3;
+    scoreLineContext.beginPath();
+    let highyPosition = parseInt(scoreLineCanvas.height - (4 * (highScore - 50)))
+    scoreLineContext.moveTo(0, highyPosition);
+    scoreLineContext.lineTo(scoreLineCanvas.width, highyPosition);
+    scoreLineContext.fill();
+    scoreLineContext.stroke();
+
+    document.getElementById("high_line_lable").style.left = "95%";
+    document.getElementById("high_line_lable").style.top = (highyPosition - 10) + "px";
+
+
+    // draw average score line
+    let avgScore = calculateRollingAverageAndHighScore()[0];
+    scoreLineContext.fillStyle = "rgba(0, 255, 50, 0)";
+    scoreLineContext.strokeStyle = [colorStrokeChoices[selectionChoice]];
+    scoreLineContext.lineWidth = 3;
+    scoreLineContext.beginPath();
+    let avgyPosition = parseInt(scoreLineCanvas.height - (4 * (avgScore - 50)))
+    scoreLineContext.moveTo(0, avgyPosition);
+    scoreLineContext.lineTo(scoreLineCanvas.width, avgyPosition);
+    scoreLineContext.fill();
+    scoreLineContext.stroke();
+
+    document.getElementById("avg_line_lable").style.left = "95%";
+    document.getElementById("avg_line_lable").style.top = (avgyPosition - 10) + "px";
 }
 
 // draw circles on landmarks to indicate how well the angle matches the target pose angle
@@ -563,7 +678,54 @@ function displayLastPoseInfo() {
     return;
 }
 
+
+////////////////////// calculations //////////////////////
+
+function formulaToCalculatePoseScore(angle) {
+    return parseInt(((1500 - parseInt(angle)) / 10));
+}
+
+function getScores() {
+    userDistances = CalculateLandmarkNormalizedDistances(convertLandmarkArrayToObject(currentLandmarksArray));
+    userAngles = CalculateAllAngles(convertLandmarkArrayToObject(currentLandmarksArray));
+    let minDistance = 100000000;
+    let minAngle = 100000000;
+    let bestIndividualAngleDifferencesArray = [];
+    for (let i = 0; i < allYogaPoseInfo.length; i++) {
+        if (allYogaPoseInfo[i].PoseNumber == currentPoseInThisWorkout) {
+            var targetLandmarks = allYogaPoseInfo[i].Landmarks;
+            var targetDistances = CalculateLandmarkNormalizedDistances(convertLandmarkArrayToObject(targetLandmarks));
+            var differenceScore = CalculateDistanceDifferences(userDistances, targetDistances);
+
+            var targetAngles = CalculateAllAngles(convertLandmarkArrayToObject(targetLandmarks));
+            var returneddifferenceAngle = CalculateAngleDifferences(userAngles, targetAngles, 0);
+            var differenceAngle = returneddifferenceAngle[0];
+            var returnedindividualAngleDifferences = returneddifferenceAngle[1];
+        }
+        if (differenceScore < minDistance) {
+            minDistance = differenceScore;
+        }
+        if (differenceAngle < minAngle) {
+            minAngle = differenceAngle;
+            bestIndividualAngleDifferencesArray = returneddifferenceAngle[1];
+        }
+        if (scoreArray.length < 300 && minAngle > 10 && minAngle < 1000) {
+            scoreArray.push(formulaToCalculatePoseScore(minAngle));
+        }
+        else {
+            if (minAngle > 10 && minAngle < 10000) {
+                scoreArray.shift();
+                scoreArray.push(formulaToCalculatePoseScore(minAngle));
+            }
+        }
+    }
+    return bestIndividualAngleDifferencesArray;
+}
+
+
+
 function normalizedRecentScoreData() {
+    let scoreModifierAmount = -30; // adjust the score numbers by a set amount
     /// remove abnormal data and average 5 latest data points
     var normalizedData = 0;
     let latestFiveArray = []; // get the latest 5 data points
@@ -589,31 +751,54 @@ function normalizedRecentScoreData() {
         normalizedData += normalizedDataArray[j];
     }
     normalizedData = normalizedData / normalizedDataArray.length;
-    let displayScore = parseInt(normalizedData - 30);
-    document.getElementById("score").innerText = "Now:" + displayScore + "%";
-    document.getElementById("avg_score").innerText = "Avg:" + calculateRollingAverageAndHighScore()[0] + "%";
-    document.getElementById("high_score").innerText = "High:" + calculateRollingAverageAndHighScore()[1] + "%";
+    let displayScore = parseInt(normalizedData);
+    document.getElementById("score").innerText = "Now:" + (displayScore + scoreModifierAmount) + "%";
+    document.getElementById("avg_score").innerText = "Avg:" + (calculateRollingAverageAndHighScore()[0] + scoreModifierAmount) + "%";
+    document.getElementById("high_score").innerText = "High:" + (calculateRollingAverageAndHighScore()[1] + scoreModifierAmount) + "%";
 
-    
-    currentPoseScoreArray.push(displayScore);
+    // push to array if length is less than 300
+    if (currentPoseScoreArray.length < 300) {
+        currentPoseScoreArray.push(normalizedData);
+    }
+    else {
+        currentPoseScoreArray.shift();
+        currentPoseScoreArray.push(normalizedData);
+    }
+    // currentPoseScoreArray.push(displayScore);
     currentScore = parseInt((normalizedData - 30));
     return normalizedData;
 }
 
-////////////////////// calculations //////////////////////
-
 // calculate the rolling average of the scoreArray
 function calculateRollingAverageAndHighScore() {
     let rollingAverage = 0;
-    let highScore = 0;
     for (let i = 0; i < currentPoseScoreArray.length; i++) {
         rollingAverage += currentPoseScoreArray[i];
-        if (currentPoseScoreArray[i] > highScore) {
-            highScore = currentPoseScoreArray[i];
+        if (currentPoseScoreArray[i] > thisPoseHighScore) {
+            thisPoseHighScore = currentPoseScoreArray[i];
         }
     }
     rollingAverage = parseInt(rollingAverage / currentPoseScoreArray.length);
-    return [rollingAverage, highScore];
+    return [rollingAverage, thisPoseHighScore];
+}
+
+// calculate the average of recent scores
+function calculateRecentScoresAverage() {
+    let average = 0;
+    let numberOfScoresToAverage = 7
+    for (let i = currentPoseScoreArray.length - numberOfScoresToAverage; i < currentPoseScoreArray.length; i++) {
+        average += currentPoseScoreArray[i];
+    }
+    average = parseInt(average / numberOfScoresToAverage);
+
+    if (scoreArray.length < 300) {
+        scoreArray.push(average);
+    }
+    else {
+        scoreArray.shift();
+        scoreArray.push(average);
+    }
+    return average;
 }
 
 // take in the landmarks object and calculat the distances from landmarks to center of body
@@ -767,8 +952,7 @@ function timerToSaveData() {
     var saveDataTimeout = setTimeout(function () {
         dataToSave();
         timerToSaveData();
-        console.log("all workout data: " + allWorkoutData.length);
-        console.log("latest data", allWorkoutData[allWorkoutData.length - 1]);
+
     }, 1000);
 }
 
@@ -797,9 +981,7 @@ function parseWorkoutData(workoutData) {
     let totalCount = 0;
     let countArray = [];
     let currentPose = 0;
-    for (let i = 0; i < workoutData.length; i++) {
-        console.log("workout data for ", i, " : ", workoutData[i].pose);
-    }
+
     currentPose = workoutData[1].pose;
     for (let i = 0; i < workoutData.length; i++) {
         if (i > 0) {
@@ -816,7 +998,7 @@ function parseWorkoutData(workoutData) {
             }
         }
     }
-    console.log("countArray: " + countArray);
+
     // get the total time for each pose
     let dataPointTracker = 1;
     for (let i = 1; i < countArray.length + 1; i++) {
@@ -826,22 +1008,18 @@ function parseWorkoutData(workoutData) {
         for (let j = 1; j < countArray[i] + 1; j++) {
             if (j == 1) {
                 startTime = workoutData[dataPointTracker].date;
-                console.log("dataPointTracker start time: " + dataPointTracker);
 
-                console.log("startTime: " + startTime);
             }
             else if (j == countArray[i]) {
                 endTime = workoutData[dataPointTracker].date;
-                console.log("dataPointTracker end time: " + dataPointTracker);
 
-                console.log("endTime: " + endTime);
             }
             dataPointTracker++;
-            console.log("dataPointTracker: " + dataPointTracker);
+
         }
 
         totalTime = endTime - startTime;
-        console.log("total time for pose " + i + ": " + totalTime);
+
     }
 }
 
