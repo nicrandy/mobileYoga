@@ -34,8 +34,8 @@ var currentPoseStartTime = 0; // set the start time of current pose
 var basePoseInfoFolderLocation = "abs/";
 
 // display settings
-var showScoreLabels = false;
-var showTimeLabel = true;
+var showScoreLabels = true;
+
 
 
 // ---------  END global variables ---------- //
@@ -106,7 +106,7 @@ function activate(ele) {
         if (ele.requestFullscreen) {
             ele.requestFullscreen();
         }
-        document.getElementById("full_screen").style.left = "0px";
+        document.getElementById("full_screen").style.left = "85%";
         document.getElementById("full_screen").style.top = "90%";
         document.getElementById("full_screen").style.width = "15%";
         document.getElementById("full_screen").style.height = "10%";
@@ -211,7 +211,7 @@ function updateTimer() {
     if (timeDifferenceInSeconds % 1 === 0) {
         timeDifferenceInSeconds = timeDifferenceInSeconds + ".0";
     }
-    document.getElementById("time").innerText = "Time: " + timeDifferenceInSeconds;
+    document.getElementById("time").innerText = "Time:  " + timeDifferenceInSeconds;
 
 
 
@@ -223,7 +223,7 @@ function updateTimer() {
 function updatePose() {
     currentPoseScoreArray = []; // clear the rolling average array for the next pose
     thisPoseHighScore = 0; // clear the high score for the next pose
-    document.getElementById("pose_count").innerText = currentPoseInThisWorkout + " of " + numberOfPosesThisWorkout;
+    document.getElementById("pose_count").innerText = "Pose " + currentPoseInThisWorkout + " of " + numberOfPosesThisWorkout;
     currentPoseStartTime = new Date().getTime();
     updateTargetImages();
 }
@@ -298,7 +298,7 @@ function updateTargetImages() {
             // check if there is a front image first, then right, then left, then back
             if (allYogaPoseInfo[i].FrontOrSide == "front" && usedBothImages == false) {
                 if (usedFirstImage == false) {
-                updateImage(targetCanvasFront, targetContextFront, i);
+                    updateImage(targetCanvasFront, targetContextFront, i);
                 }
                 else {
                     updateImage(targetCanvasSide, targetContextSide, i);
@@ -306,7 +306,7 @@ function updateTargetImages() {
             }
             else if (allYogaPoseInfo[i].FrontOrSide == "right" && usedBothImages == false) {
                 if (usedFirstImage == false) {
-                updateImage(targetCanvasFront, targetContextFront, i);
+                    updateImage(targetCanvasFront, targetContextFront, i);
                 }
                 else {
                     updateImage(targetCanvasSide, targetContextSide, i);
@@ -314,7 +314,7 @@ function updateTargetImages() {
             }
             else if (allYogaPoseInfo[i].FrontOrSide == "left" && usedBothImages == false) {
                 if (usedFirstImage == false) {
-                updateImage(targetCanvasFront, targetContextFront, i);
+                    updateImage(targetCanvasFront, targetContextFront, i);
                 }
                 else {
                     updateImage(targetCanvasSide, targetContextSide, i);
@@ -322,7 +322,7 @@ function updateTargetImages() {
             }
             else if (allYogaPoseInfo[i].FrontOrSide == "back" && usedBothImages == false) {
                 if (usedFirstImage == false) {
-                updateImage(targetCanvasFront, targetContextFront, i);
+                    updateImage(targetCanvasFront, targetContextFront, i);
                 }
                 else {
                     updateImage(targetCanvasSide, targetContextSide, i);
@@ -445,16 +445,39 @@ function drawLandmarkLines(landmarks) {
 
 // draw squares on top left and top right of the image to act as confirmation areas. When user puts hands in both squares, it confirms the selection
 function drawConfirmationSquares() {
-    let leftHandImage = new Image();
-    leftHandImage.src = "images/leftHand.png";
-    leftHandImage.onload = function () {
-        drawingContext.drawImage(leftHandImage, 0, 0, userCanvas.width * .1, userCanvas.height * .1);
+    let showHands = false;
+    if (showHands) {
+        // draw hands for confirmation area
+        let leftHandImage = new Image();
+        leftHandImage.src = "images/leftHand.png";
+        leftHandImage.onload = function () {
+            drawingContext.drawImage(leftHandImage, 0, 0, userCanvas.width * .1, userCanvas.height * .1);
+        }
+        let rightHandImage = new Image();
+        rightHandImage.src = "images/rightHand.png";
+        rightHandImage.onload = function () {
+            drawingContext.drawImage(rightHandImage, userCanvas.width * .9, 0, userCanvas.width * .1, userCanvas.height * .1);
+        }
     }
-    let rightHandImage = new Image();
-    rightHandImage.src = "images/rightHand.png";
-    rightHandImage.onload = function () {
-        drawingContext.drawImage(rightHandImage, userCanvas.width * .9, 0, userCanvas.width * .1, userCanvas.height * .1);
-    }
+    // draw circles instead of hands
+    let circleDiameter = userCanvas.width * .03;
+    drawingContext.globalAlpha = 0.1;
+    drawingContext.linewidth = 5;
+    drawingContext.fillStyle = 'rgba(0, 255, 0,0.05)';
+    drawingContext.strokeStyle = 'rgb(0, 200, 0)';
+    drawingContext.beginPath();
+    drawingContext.arc(userCanvas.width * .05, userCanvas.height * .05, circleDiameter, 0, 2 * Math.PI);
+    drawingContext.closePath();
+    drawingContext.fill();
+    drawingContext.stroke();
+
+    drawingContext.fillStyle = 'rgba(255, 0, 0,0.05)';
+    drawingContext.strokeStyle = 'rgb(200, 0, 0)';
+    drawingContext.beginPath();
+    drawingContext.arc(userCanvas.width * .95, userCanvas.height * .05, circleDiameter, 0, 2 * Math.PI);
+    drawingContext.closePath();
+    drawingContext.fill();
+    drawingContext.stroke();
     // get the center of the users right and left hand, mid point between pinky and thumb
     let RightHandCenterX = ((currentLandmarksArray[22][0] - currentLandmarksArray[18][0]) / 2) + currentLandmarksArray[18][0];
     let RightHandCenterY = ((currentLandmarksArray[22][1] - currentLandmarksArray[18][1]) / 2) + currentLandmarksArray[18][1];
@@ -462,15 +485,17 @@ function drawConfirmationSquares() {
     let LeftHandCenterY = ((currentLandmarksArray[21][1] - currentLandmarksArray[17][1]) / 2) + currentLandmarksArray[17][1];
     // draw a circle at the center of the hands
     circleDiameter = 20;
-    userContext.fillStyle = 'white';
+    userContext.fillStyle = 'lightgreen';
     userContext.strokeStyle = 'green';
     userContext.beginPath();
-    userContext.arc(RightHandCenterX * userCanvas.width, RightHandCenterY * userCanvas.height, circleDiameter, 0, 2 * Math.PI);
+    userContext.arc(LeftHandCenterX * userCanvas.width, LeftHandCenterY * userCanvas.height, circleDiameter, 0, 2 * Math.PI);
     userContext.closePath();
     userContext.fill();
     userContext.stroke();
+    userContext.fillStyle = 'pink';
+    userContext.strokeStyle = 'red';
     userContext.beginPath();
-    userContext.arc(LeftHandCenterX * userCanvas.width, LeftHandCenterY * userCanvas.height, circleDiameter, 0, 2 * Math.PI);
+    userContext.arc(RightHandCenterX * userCanvas.width, RightHandCenterY * userCanvas.height, circleDiameter, 0, 2 * Math.PI);
     userContext.closePath();
     userContext.fill();
     userContext.stroke();
@@ -509,12 +534,12 @@ function startWorkout() {
         for (let i = 0; i < scoreClasses.length; i++) {
             scoreClasses[i].style.visibility = "visible";
         }
+        let lineLabels = document.getElementsByClassName("line_label");
+        for (let i = 0; i < lineLabels.length; i++) {
+            lineLabels[i].style.visibility = "visible";
+        }
     }
-    else if (showTimeLabel) {
-        document.getElementById("time").style.top = "90%";
-        document.getElementById("time").style.visibility = "visible";
 
-    }
 }
 
 function workoutFinished() {
@@ -586,7 +611,7 @@ function drawScoreData() {
     }
     scoreLineContext.fill();
     scoreLineContext.stroke();
-    document.getElementById("now_line_lable").style.left = "95%";
+    document.getElementById("now_line_lable").style.left = "96%";
     document.getElementById("now_line_lable").style.top = (moveToY - 10) + "px";
 
     // draw high score line
@@ -601,7 +626,7 @@ function drawScoreData() {
     scoreLineContext.fill();
     scoreLineContext.stroke();
 
-    document.getElementById("high_line_lable").style.left = "95%";
+    document.getElementById("high_line_lable").style.left = "96%";
     document.getElementById("high_line_lable").style.top = (highyPosition - 10) + "px";
 
 
@@ -617,7 +642,7 @@ function drawScoreData() {
     scoreLineContext.fill();
     scoreLineContext.stroke();
 
-    document.getElementById("avg_line_lable").style.left = "95%";
+    document.getElementById("avg_line_lable").style.left = "96%";
     document.getElementById("avg_line_lable").style.top = (avgyPosition - 10) + "px";
 }
 
@@ -752,9 +777,9 @@ function normalizedRecentScoreData() {
     }
     normalizedData = normalizedData / normalizedDataArray.length;
     let displayScore = parseInt(normalizedData);
-    document.getElementById("score").innerText = "Now:" + (displayScore + scoreModifierAmount) + "%";
-    document.getElementById("avg_score").innerText = "Avg:" + (calculateRollingAverageAndHighScore()[0] + scoreModifierAmount) + "%";
-    document.getElementById("high_score").innerText = "High:" + (calculateRollingAverageAndHighScore()[1] + scoreModifierAmount) + "%";
+    document.getElementById("score").innerText = "Now:  " + (displayScore + scoreModifierAmount) + "%";
+    document.getElementById("avg_score").innerText = "Avg:  " + (calculateRollingAverageAndHighScore()[0] + scoreModifierAmount) + "%";
+    document.getElementById("high_score").innerText = "High:  " + (calculateRollingAverageAndHighScore()[1] + scoreModifierAmount) + "%";
 
     // push to array if length is less than 300
     if (currentPoseScoreArray.length < 300) {

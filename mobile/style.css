@@ -53,95 +53,83 @@ body {
   width: 15%;
   height: 10%;
   top: 90%;
-  left: 0%;
+  left: 85%;
   z-index: 100;
   visibility: visible;
+  background-color: rgba(0, 0, 0, 0.515);
+  border-radius: 5px;
+  border: 1px solid rgb(139, 0, 0);
+  color: white;
+  font-size: 2vw;
 }
 
 #pose_count {
-  position: absolute;
-  left: 10%;
-  top: 0%;
-  width: 20%;
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: 45px;
+  font-size: 3.5vw;
   font-weight: bold;
-  color: rgb(13, 202, 0);
-  text-align: center;
+  color: rgb(162, 0, 202);
   -webkit-text-stroke-width: 1px;
   -webkit-text-stroke-color: rgb(255, 255, 255);
-  visibility: visible;
+}
+#time {
+  font-size: 3vw;
+
+  font-weight: bold;
+  color: rgb(7, 202, 0);
+  -webkit-text-stroke-width: 1px;
+  -webkit-text-stroke-color: rgb(255, 255, 255);
 }
 
 #score {
-  z-index: 10;
-  position: absolute;
-  left: 70%;
-  top: 0%;
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: 50px;
   font-weight: bold;
-  color: rgb(10, 191, 219);
-  text-align: center;
+  color: rgb(219, 10, 10);
   -webkit-text-stroke-width: 1px;
   -webkit-text-stroke-color: rgb(255, 255, 255);
-  visibility: hidden;
 }
 #avg_score {
-  z-index: 10;
-  position: absolute;
-  left: 70%;
-  top: 10%;
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: 50px;
   font-weight: bold;
-  color: rgb(13, 202, 0);
-  text-align: center;
+  color: rgb(219, 10, 10);
   -webkit-text-stroke-width: 1px;
   -webkit-text-stroke-color: rgb(255, 255, 255);
-  visibility: hidden;
 }
 #high_score {
-  z-index: 10;
-  position: absolute;
-  left: 70%;
-  top: 20%;
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: 50px;
   font-weight: bold;
-  color: rgb(11, 120, 210);
-  text-align: center;
+  color: rgb(219, 10, 10);
   -webkit-text-stroke-width: 1px;
   -webkit-text-stroke-color: rgb(255, 255, 255);
-  visibility: hidden;
 }
 
-#time {
+.score_info {
   z-index: 10;
-  position: absolute;
-  left: 70%;
-  top: 30%;
+  font-size: 3vw;
+  position: relative;
+  text-align: right;
   font-family: Arial, Helvetica, sans-serif;
-  font-size: 50px;
-  font-weight: bold;
-  color: rgb(131, 0, 202);
-  text-align: center;
-  -webkit-text-stroke-width: 1px;
-  -webkit-text-stroke-color: rgb(255, 255, 255);
   visibility: hidden;
+
 }
 
-.line_label{
+#score_display {
+  position: absolute;
+  z-index: 10;
+  left: 0%;
+  top: 0%;
+
+  background-color: rgba(0, 0, 0, 0.684);
+  visibility: hidden;
+  border: 1px solid rgb(139, 0, 0);
+  border-radius: 10px;
+}
+
+.line_label {
   position: absolute;
   text-align: center;
   z-index: 10;
-  width: 5%;
+  text-align: right;
   font-family: Arial, Helvetica, sans-serif;
-  font-size: 20px;
+  font-size: 1.5vw;
+  width: 3%;
   font-weight: bold;
-  color: rgb(167, 11, 11);
-  background-color:  rgb(246, 203, 95);
-  -webkit-text-stroke-width: 1px;
-  -webkit-text-stroke-color: rgb(0, 0, 0);
-  visibility: visible;
+  color: rgb(0, 0, 0);
+  background-color: rgb(255, 255, 255);
+  visibility: hidden;
 }
