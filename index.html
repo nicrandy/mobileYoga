@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils_3d/control_utils_3d.js"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"
+      crossorigin="anonymous"
+    ></script>
+
+    <script data-main="scripts/app" src="scripts/require.js"></script>
+
+    <link rel="stylesheet" href="style.css" />
+  </head>
+
+  <body>
+    <video id="video" class="input_video"></video>
+    <span id="status">Loading <s>Skynet</s> AI network</span>
+    <button id="full_screen" onclick="activate(document.documentElement);">
+      Go To Full Screen
+    </button>
+    <canvas id="reversed_user_canvas" class="output_canvas"></canvas>
+    <canvas id="nonReversed_drawing_canvas" class="drawing_canvas"></canvas>
+    <div id="image_canvases"></div>
+    <canvas id="target_pose_canvas_front" class="target_canvas"></canvas>
+    <canvas id="target_pose_canvas_side" class="target_canvas"></canvas>
+    <canvas id="score_line" class="drawing_canvas"></canvas>
+    <table id="score_display" class="score_info">
+      <tr>
+        <td id="pose_count" class="score_info">0 of ?</td>
+      </tr>
+      <tr>
+        <td id="time" class="score_info">0</td>
+      </tr>
+      <tr>
+        <td id="score" class="score_info">0</td>
+      </tr>
+      <tr>
+        <td id="avg_score" class="score_info">0</td>
+      </tr>
+      <tr>
+        <td id="high_score" class="score_info">0</td>
+      </tr>
+    </table>
+
+    <span id="avg_line_lable" class="line_label">Avg</span>
+    <span id="high_line_lable" class="line_label">High</span>
+    <span id="now_line_lable" class="line_label">Now</span>
+
+    <div class="landmark-grid-container"></div>
+    <script src="action.js" crossorigin="anonymous"></script>
+  </body>
+</html>
