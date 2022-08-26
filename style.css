@@ -112,6 +112,7 @@ body {
   color: rgb(219, 10, 10);
   -webkit-text-stroke-width: 1px;
   -webkit-text-stroke-color: rgb(255, 255, 255);
+  visibility: hidden;
 }
 
 .score_info {

@@ -15,6 +15,7 @@ const scoreLineCanvas = document.getElementById('score_line');
 const scoreLineContext = scoreLineCanvas.getContext('2d');
 
 // ---------  START global variables ---------- //
+var workoutInfo = [];
 var allYogaPoseInfo = []; // load from json file of pose info
 var currentLandmarksArray = []; // live update of output landmarks
 var currentScore = 0;
@@ -29,10 +30,16 @@ var canUseConfirmSquares = true;
 var saveWorkoutData = false;
 var workoutInProgress = false;
 var currentPoseScoreArray = []; // array of scores for each pose to calculate rolling average
-var currentPoseStartTime = 0; // set the start time of current pose
 var imageCanvasesCreated = []; // names of two image canvases created, so they can be deleted when next images loaded
 
-var basePoseInfoFolderLocation = "workouts/Yoga_stretch/";
+
+var basePoseInfoFolderLocation = "workouts/Sun_Salutation/";
+var preloadedImages = [];
+
+var playingAudio = false;// if audio is currently playing
+var audioStarted = false; // if the audio has been started or not
+var audioFile = 'audio/airtone.mp3'; // location of audio file to play
+var audioTimerFile = 'audio/timerSound.mp3' // location of audio file for timer
 
 // display settings
 var showScoreLabels = true;
@@ -44,6 +51,33 @@ var showScoreLabels = true;
 
 
 // from json file, includes image file location, name and pose angles
+// parse the workout info file
+function loadWorkoutInfoJSON(callback) {
+    var xobj = new XMLHttpRequest();
+    xobj.overrideMimeType("application/json");
+    xobj.open('GET', basePoseInfoFolderLocation + '/exerciseInfo.json', true);
+    xobj.onreadystatechange = function () {
+        if (xobj.readyState == 4 && xobj.status == "200") {
+            // .open will NOT return a value but simply returns undefined in async mode so use a callback
+            callback(xobj.responseText);
+        }
+    }
+    xobj.send(null);
+}
+// Call to function with anonymous callback
+loadWorkoutInfoJSON(function (response) {
+    // Do Something with the response e.g.
+    workoutInfo = JSON.parse(response); // save json info to global variable
+    console.log(workoutInfo);
+});
+
+
+
+
+
+
+
+
 function loadJSON(callback) {
     var xobj = new XMLHttpRequest();
     xobj.overrideMimeType("application/json");
@@ -62,6 +96,7 @@ loadJSON(function (response) {
     allYogaPoseInfo = JSON.parse(response); // save json info to global variable
     parseYogaPoseInfo(allYogaPoseInfo); // get the number of unique poses in this workout
     // updatePoseCount();
+    preloadedImages = preloadImages();
 });
 
 // get the number of unique poses
@@ -81,6 +116,32 @@ function countUnique(iterable) {
     numArray = numArray.sort(function (a, b) { return a - b; });
     return numArray;
 }
+
+// preload images
+function preloadImages() {
+    let thisPoseImages = [];
+    console.log(allYogaPoseInfo.length);
+    // create empty 2D array to hold images
+    for (let i = 0; i < numberOfPosesThisWorkout; i++) {
+        thisPoseImages[i] = [];
+    }
+    for (let i = 0; i < allYogaPoseInfo.length; i++) {
+        let image = new Image();
+        image.src = basePoseInfoFolderLocation + allYogaPoseInfo[i].RelativeLocation;
+        thisPoseImages[allYogaPoseInfo[i].PoseNumber - 1].push(image.src = basePoseInfoFolderLocation + allYogaPoseInfo[i].RelativeLocation);
+        // image.onload = function () {
+        //     thisPoseImages[allYogaPoseInfo[i].PoseNumber - 1].push(image);
+        // }
+    }
+    // for (let i = 0; i < allYogaPoseInfo.length; i++) {
+    //     thisPoseImages[allYogaPoseInfo[i].PoseNumber - 1] = new Image();
+    //     let thisImageSRC = thisPoseImages[allYogaPoseInfo[i].PoseNumber - 1].src = basePoseInfoFolderLocation + allYogaPoseInfo[i].RelativeLocation;
+
+    // }
+    console.log("images preloaded", thisPoseImages);
+    return thisPoseImages;
+}
+
 
 
 
@@ -159,18 +220,63 @@ function onResults(results) {
     var individualAngleScores = getScores();
 
     drawConfirmationSquares();
+    // preloadImages();
 
     if (workoutInProgress) {
         drawLandmarkLines(currentLandmarksArray);
         drawScoreData();
-        drawNormalizedScoreLines();
+        // drawNormalizedScoreLines();
         normalizedRecentScoreData();
         drawFeedbackCircles(individualAngleScores);
         updateTimer();
-
+        timeInPose();
+        controlAudio();
+    }
+}
+///////////////////////////// for audio feedback ////////////////////////////////
+// music playrate changes based on the current score
+const audio = document.createElement('audio');
+function controlAudio() {
+    if (!playingAudio) {
+        playingAudio = true;
+        audioStarted = true;
+        audio.setAttribute('src', audioFile);
+        audio.play();
+    }
+    // check if within threshold of .5 to 2 or will crash if outside of range
+    if (audioStarted) {
+        if (currentScore / 100 < 0.5) {
+            audio.playbackRate = 0.5;
+        }
+        else if (currentScore / 100 > 2) {
+            audio.playbackRate = 2;
+        }
+        else {
+            audio.playbackRate = currentScore / 100;
+        }
     }
 }
 
+// play audio every set number of seconds
+function playTimerAudio(timeDifferenceInSeconds) {
+    let interval = 10; // seconds between audio plays
+    if (timeDifferenceInSeconds > 5 && timeDifferenceInSeconds % interval == 0) {
+        let timeFraction = (100 - timeDifferenceInSeconds) / 100;
+        const audioSecondIndication = new Audio(audioTimerFile);
+        if (timeFraction / 100 < 0.5) {
+            audioSecondIndication.playbackRate = 0.5;
+        }
+        else if (timeFraction / 100 > 2) {
+            audioSecondIndication.playbackRate = 2;
+        }
+        else {
+            audioSecondIndication.playbackRate = timeFraction / 100;
+        }
+        audioSecondIndication.play();
+    }
+}
+
+///////////////////////////// end audio feedback ////////////////////////////////
 
 
 // take in landmarks and convert to 2D array [x,y,z,visibility]
@@ -200,19 +306,56 @@ function convertLandmarkArrayToObject(landmarkArray) {
 
 
 
-// display a stopwatch timer
+
+// this function tracks the time in pose and stops the timer if the score is below the threshold
+var currentPoseStartTime = 0; // set the start time of current pose
+var totalPoseTime = 0; // track the total time in pose
+var minScoreThreshold = 60; // if score is below this threshold, stop the timer
+var inPose = false; // boolean to track if user is in pose
+var firstPass = true; // boolean to track if this is the first pass of the pose
+var totalTime = 0; // total time in pose
+function timeInPose() {
+    if (currentScore > minScoreThreshold) {
+        inPose = true;
+        if (firstPass) {
+            currentPoseStartTime = Date.now();
+            firstPass = false;
+        }
+        else {
+            totalPoseTime += Date.now() - currentPoseStartTime;
+            currentPoseStartTime = Date.now();
+        }
+    }
+    else {
+        currentPoseStartTime = Date.now();
+    }
+    totalTime = totalPoseTime / 1000;
+    totalTime = Math.round(totalTime * 10) / 10;
+    let timeString = totalTime.toString();
+    if (totalTime % 1 == 0) {
+        timeString = totalTime + ".0";
+    }
+    document.getElementById("time").innerText = "Time:  " + timeString;
+}
+
+// this function tracks the total time in pose
+var totalTimeForPose = 0; // track the total time for the pose
 function updateTimer() {
     currentPoseEndTime = new Date().getTime();
-    let timeDifference = currentPoseEndTime - currentPoseStartTime;
+    let timeDifference = currentPoseEndTime - totalTimeForPose;
     let timeDifferenceInSeconds = timeDifference / 1000;
     // round number to one decimal place
+    // get the modulous of the variable and perform action if remainder is 0
+
     timeDifferenceInSeconds = Math.round(timeDifferenceInSeconds * 10) / 10;
+    playTimerAudio(totalTime);
+
 
     // add .0 to time if it is exactly a whole number
     if (timeDifferenceInSeconds % 1 === 0) {
         timeDifferenceInSeconds = timeDifferenceInSeconds + ".0";
     }
-    document.getElementById("time").innerText = "Time:  " + timeDifferenceInSeconds;
+    // document.getElementById("time").innerText = "Time:  " + timeDifferenceInSeconds;
 
 
 
@@ -225,11 +368,81 @@ function updatePose() {
     currentPoseScoreArray = []; // clear the rolling average array for the next pose
     thisPoseHighScore = 0; // clear the high score for the next pose
     document.getElementById("pose_count").innerText = "Pose " + currentPoseInThisWorkout + " of " + numberOfPosesThisWorkout;
-    currentPoseStartTime = new Date().getTime();
+    totalTimeForPose = new Date().getTime();
+    totalPoseTime = 0; // reset the total time for the pose
     // updateTargetImages();
-    drawImages();
+    drawSingleImage();
+    delayHighScoreCapture(); // delay the high score capture by one second
 }
 
+// draw one image
+function drawSingleImage() {
+    function putImageOnCanvas(canvas, context, i) {
+        // place the image on the canvas
+        let img = new Image();
+        img.src = basePoseInfoFolderLocation + allYogaPoseInfo[i].RelativeLocation;
+        img.onload = function () {
+            imgWidth = img.width;
+            imgHeight = img.height;
+            imgRatio = img.width / img.height;
+            userCanvasHeight = userCanvas.height;
+            userCanvasWidth = userCanvas.width;
+            userCanvasRatio = userCanvas.width / userCanvas.height;
+            if (imgRatio > userCanvasRatio) {
+                // image is wider than canvas
+                canvas.width = userCanvasWidth * 0.5
+                canvas.height = userCanvasHeight * 0.5 / imgRatio
+            }
+            else {
+                // image is taller than canvas
+                canvas.width = userCanvasWidth * 0.5 * imgRatio;
+                canvas.height = userCanvasHeight * 0.5
+            }
+            canvas.style.left = "0%";
+            let top = (userCanvas.height - canvas.height);
+            canvas.style.top = top + "px";
+            // clear the canvas
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            // draw aura from center of canvas
+            var x = canvas.width / 2,
+                y = canvas.height / 2,
+                // Radii of the white glow.
+                innerRadius = x / 2,
+                outerRadius = x,
+                // Radius of the entire circle.
+                radius = canvas.width;
+            // change the aura based on image ratio
+            if (imgHeight < imgWidth) {
+                innerRadius = y / 2;
+                outerRadius = y;
+            }
+
+            var gradient = context.createRadialGradient(x, y, innerRadius, x, y, outerRadius);
+            gradient.addColorStop(0, 'rgba(238,255,20,1)');
+            gradient.addColorStop(1, 'rgba(255,161,20,0)');
+
+            context.arc(x, y, radius, 0, 2 * Math.PI);
+
+            context.fillStyle = gradient;
+            context.fill();
+
+            context.drawImage(img, 0, 0, canvas.width, canvas.height);
+        }
+    }
+    for (let i = 0; i < allYogaPoseInfo.length; i++) {
+        if (allYogaPoseInfo[i].PoseNumber == currentPoseInThisWorkout) {
+            let poseToDisplay = workoutInfo[0].BestPoseImage;
+            poseToDisplay = poseToDisplay[currentPoseInThisWorkout - 1];
+            console.log("Pose to display: " + poseToDisplay);
+            if (allYogaPoseInfo[i].FrontOrSide == poseToDisplay) {
+                putImageOnCanvas(targetCanvasFront, targetContextFront, i);
+            }
+        }
+    }
+}
+
+
+// draw two images
 function drawImages() {
     // check to see which of the image angles are present
     let frontImagePresent = false;
@@ -238,7 +451,6 @@ function drawImages() {
     let rightImagePresent = false;
     for (let i = 0; i < allYogaPoseInfo.length; i++) {
         if (allYogaPoseInfo[i].PoseNumber == currentPoseInThisWorkout) {
-
             if (allYogaPoseInfo[i].FrontOrSide === "front") {
                 frontImagePresent = true;
             }
@@ -253,7 +465,6 @@ function drawImages() {
             }
         }
     }
-    console.log("front: " + frontImagePresent + " back: " + backImagePresent + " left: " + leftImagePresent + " right: " + rightImagePresent);
     function putImageOnCanvas(canvas, context, i) {
         // place the image on the canvas
         let img = new Image();
@@ -267,13 +478,13 @@ function drawImages() {
             userCanvasRatio = userCanvas.width / userCanvas.height;
             if (imgRatio > userCanvasRatio) {
                 // image is wider than canvas
-                canvas.width = userCanvasWidth * 0.5 * 1 / imgRatio;
-                canvas.height = userCanvasHeight * 0.5 * imgRatio
+                canvas.width = userCanvasWidth * 0.5
+                canvas.height = userCanvasHeight * 0.5 / imgRatio
             }
             else {
                 // image is taller than canvas
                 canvas.width = userCanvasWidth * 0.5 * imgRatio;
-                canvas.height = userCanvasHeight * 0.5 * 1 / imgRatio
+                canvas.height = userCanvasHeight * 0.5
             }
 
 
@@ -541,14 +752,15 @@ function drawLandmarkLines(landmarks) {
         let xFinish = Math.round(landmarks[item[1]][0] * userCanvas.width);
         userContext.beginPath();
         userContext.moveTo(xStart, yStart);
-        if (item[0] == 12 && item[1] == 11 || item[0] == 23 && item[1] == 24) {
-            userContext.strokeStyle = 'blue';
+
+        if (item[0] == 12 && item[1] == 11 || item[0] == 23 && item[1] == 24) { // between shoulders and hips
+            userContext.strokeStyle = 'rgba(45,0,249,0.5)';
         }
-        else if (item[0] % 2 == 0) {
-            userContext.strokeStyle = 'red';
+        else if (item[0] % 2 == 0) { // right side of body
+            userContext.strokeStyle = 'rgba(242,29,29,0.5)';
         }
-        else {
-            userContext.strokeStyle = 'green';
+        else { // left side of body
+            userContext.strokeStyle = 'rgba(0,236,61,0.5)';
         }
         userContext.lineWidth = 10;
         userContext.lineCap = 'round';
@@ -557,14 +769,15 @@ function drawLandmarkLines(landmarks) {
 
         userContext.beginPath();
         userContext.moveTo(xStart, yStart);
+
         if (item[0] == 12 && item[1] == 11 || item[0] == 23 && item[1] == 24) {
-            userContext.strokeStyle = 'lightblue';
+            userContext.strokeStyle = 'rgba(0,237,249,0.8)';
         }
         else if (item[0] % 2 == 0) {
-            userContext.strokeStyle = 'orange';
+            userContext.strokeStyle = 'rgba(255,20,251,0.8)';
         }
         else {
-            userContext.strokeStyle = 'lightgreen'
+            userContext.strokeStyle = 'rgba(57,236,0,0.8)';
         }
         userContext.lineWidth = 2;
         userContext.lineCap = 'round';
@@ -614,6 +827,8 @@ function drawLandmarkLines(landmarks) {
 }
 
 // draw squares on top left and top right of the image to act as confirmation areas. When user puts hands in both squares, it confirms the selection
+var startConfirmation = false; // flag to start confirmation
+var completeConfirmation = false; // flag to complete confirmation
 function drawConfirmationSquares() {
     document.getElementById("status").style.visibility = "hidden";
     // clear the drawingContext
@@ -638,7 +853,7 @@ function drawConfirmationSquares() {
     if (upperCorners) {
         let circleDiameter = userCanvas.width * .03;
         userContext.linewidth = 5;
-        userContext.fillStyle = 'rgba(0, 255, 0,0.05)';
+        userContext.fillStyle = 'rgba(88,24,69,0.05)';
         userContext.strokeStyle = 'rgb(0, 200, 0)';
         userContext.beginPath();
         userContext.arc(userCanvas.width * .05, userCanvas.height * .05, circleDiameter, 0, 2 * Math.PI);
@@ -646,7 +861,7 @@ function drawConfirmationSquares() {
         userContext.fill();
         userContext.stroke();
 
-        userContext.fillStyle = 'rgba(255, 0, 0,0.05)';
+        userContext.fillStyle = 'rgba(88,24,69,0.05)';
         userContext.strokeStyle = 'rgb(200, 0, 0)';
         userContext.beginPath();
         userContext.arc(userCanvas.width * .95, userCanvas.height * .05, circleDiameter, 0, 2 * Math.PI);
@@ -654,21 +869,21 @@ function drawConfirmationSquares() {
         userContext.fill();
         userContext.stroke();
     }
-    let nearHeadCircleDiameter = parseInt(Math.abs(currentLandmarksArray[11][0] - currentLandmarksArray[12][0]) * userCanvas.width * .1);
+    let nearHeadCircleDiameter = parseInt(Math.abs(currentLandmarksArray[11][0] - currentLandmarksArray[12][0]) * userCanvas.width * .15);
     let leftX = parseInt(currentLandmarksArray[11][0] * userCanvas.width); // left shoulder
     let leftY = parseInt(currentLandmarksArray[3][1] * userCanvas.height); // left eye
     let rightX = parseInt(currentLandmarksArray[12][0] * userCanvas.width); // right shoulder
     let rightY = parseInt(currentLandmarksArray[6][1] * userCanvas.height); // right eye
     if (nearHead) {
         userContext.linewidth = 5;
-        userContext.fillStyle = 'rgba(0, 255, 0,0.5)';
+        userContext.fillStyle = 'rgba(88,24,69,0.5)';
         userContext.strokeStyle = 'rgb(0, 200, 0)';
         userContext.beginPath();
         userContext.arc(leftX, leftY, nearHeadCircleDiameter, 0, 2 * Math.PI);
         userContext.closePath();
         userContext.fill();
         userContext.stroke();
-        userContext.fillStyle = 'rgba(255, 0, 0,0.5)';
+        userContext.fillStyle = 'rgba(88,24,69,0.5)';
         userContext.strokeStyle = 'rgb(200, 0, 0)';
         userContext.beginPath();
         userContext.arc(rightX, rightY, nearHeadCircleDiameter, 0, 2 * Math.PI);
@@ -684,14 +899,14 @@ function drawConfirmationSquares() {
     let LeftHandCenterY = ((currentLandmarksArray[21][1] - currentLandmarksArray[17][1]) / 2) + currentLandmarksArray[17][1];
     // draw a circle at the center of the hands
     circleDiameter = 20;
-    userContext.fillStyle = 'lightgreen';
+    userContext.fillStyle = 'rgba(88,24,69,0.5)';
     userContext.strokeStyle = 'green';
     userContext.beginPath();
     userContext.arc(LeftHandCenterX * userCanvas.width, LeftHandCenterY * userCanvas.height, circleDiameter, 0, 2 * Math.PI);
     userContext.closePath();
     userContext.fill();
     userContext.stroke();
-    userContext.fillStyle = 'pink';
+    userContext.fillStyle = 'rgba(88,24,69,0.5)';
     userContext.strokeStyle = 'red';
     userContext.beginPath();
     userContext.arc(RightHandCenterX * userCanvas.width, RightHandCenterY * userCanvas.height, circleDiameter, 0, 2 * Math.PI);
@@ -700,22 +915,29 @@ function drawConfirmationSquares() {
     userContext.stroke();
     // detect if the user has put their hands in the confirmation squares
     function confirmChoice() {
-        canUseConfirmSquares = false;
+        startConfirmation = true;
         setTimeout(() => {
-            canUseConfirmSquares = true;
-        }, "3000")
-
-        if (!workoutInProgress) {
-            startWorkout();
-        }
-        else {
-            currentPoseInThisWorkout++;
-            if (currentPoseInThisWorkout <= numberOfPosesThisWorkout) {
-                updatePose();
+            completeConfirmation = true;
+        }, "1000") // hands must be in confirmation area for set amount of time
+        console.log("confirm statuses: " + startConfirmation + " " + completeConfirmation + " " + canUseConfirmSquares);
+        if (completeConfirmation && startConfirmation) {
+            if (!workoutInProgress) {
+                startWorkout();
             }
             else {
-                workoutFinished();
+                currentPoseInThisWorkout++;
+                if (currentPoseInThisWorkout <= numberOfPosesThisWorkout) {
+                    updatePose();
+                }
+                else {
+                    workoutFinished();
+                }
             }
+
+            canUseConfirmSquares = false;
+            setTimeout(() => {
+                canUseConfirmSquares = true;
+            }, "3000")
         }
     }
     if (canUseConfirmSquares) {
@@ -730,20 +952,24 @@ function drawConfirmationSquares() {
             let lefty = LeftHandCenterY;
             let leftcircleX = currentLandmarksArray[11][0];
             let leftcircleY = currentLandmarksArray[3][1];
-            let leftrad = Math.abs(currentLandmarksArray[11][0] - currentLandmarksArray[12][0]) * .1;
+            let leftrad = Math.abs(currentLandmarksArray[11][0] - currentLandmarksArray[12][0]) * .15;
             let rightx = RightHandCenterX;
             let righty = RightHandCenterY;
             let rightcircleX = currentLandmarksArray[12][0];
             let rightcircleY = currentLandmarksArray[6][1];
-            let rightrad = Math.abs(currentLandmarksArray[11][0] - currentLandmarksArray[12][0]) * .1;
+            let rightrad = Math.abs(currentLandmarksArray[11][0] - currentLandmarksArray[12][0]) * .15;
             if (((leftx - leftcircleX) * (leftx - leftcircleX) + (lefty - leftcircleY) * (lefty - leftcircleY) <= leftrad * leftrad) &&
                 ((rightx - rightcircleX) * (rightx - rightcircleX) + (righty - rightcircleY) * (righty - rightcircleY) <= rightrad * rightrad)) {
                 confirmChoice();
             }
+            else {
+                startConfirmation = false;
+                completeConfirmation = false;
+            }
         }
         else {
-            inConfirmationArea = false;
             confirmChoice();
+
         }
     }
 
@@ -761,10 +987,10 @@ function startWorkout() {
         for (let i = 0; i < scoreClasses.length; i++) {
             scoreClasses[i].style.visibility = "visible";
         }
-        let lineLabels = document.getElementsByClassName("line_label");
-        for (let i = 0; i < lineLabels.length; i++) {
-            lineLabels[i].style.visibility = "visible";
-        }
+        // let lineLabels = document.getElementsByClassName("line_label");
+        // for (let i = 0; i < lineLabels.length; i++) {
+        //     lineLabels[i].style.visibility = "visible";
+        // }
     }
 
 }
@@ -811,7 +1037,6 @@ function drawNormalizedScoreLines() {
     for (let i = 0; i < array.length; i++) {
         normalizedArray.push((array[i] - min) / (max - min));
     }
-    console.log("score display height = " + document.getElementById("score_display").offsetHeight);
     let startY = document.getElementById("score_display").offsetHeight
     let startX = (document.getElementById("score_display").offsetWidth / 2);
     let endY = window.innerHeight;
@@ -830,89 +1055,99 @@ function drawNormalizedScoreLines() {
     scoreLineContext.stroke();
 }
 function drawScoreData() {
+    let drawCurrentScore = true;
+    let drawAvgScore = false;
+    let drawMaxScore = false;
     document.getElementById("score_line").style.zIndex = 1;
     scoreLineContext.clearRect(0, 0, scoreLineCanvas.width, scoreLineCanvas.height);
-    // draw background line with darker color
-    let scoreArray = currentPoseScoreArray;
-    let lowerLimit = 80;
-    let upperLimit = 100;
-    let colorSolidChoices = ['red', 'orange', 'green'];
-    let colorStrokeChoices = ['pink', 'yellow', 'lightgreen'];
-    let selectionChoice = 0;
-    if (currentScore < lowerLimit) {
-        selectionChoice = 0;
-    }
-    else if (currentScore < upperLimit) {
-        selectionChoice = 1;
-    }
-    else {
-        selectionChoice = 2;
-    }
+    // current score line
+    if (drawCurrentScore) {
 
-    scoreLineContext.fillStyle = "rgba(0, 255, 50, 0)";
-    scoreLineContext.strokeStyle = [colorSolidChoices[selectionChoice]];
-    scoreLineContext.lineWidth = 10;
-    scoreLineContext.beginPath();
-    scoreLineContext.moveTo(-(scoreLineCanvas.width * .1), scoreLineCanvas.height);
-    for (let i = 0; i < scoreArray.length; i++) {
-        let moveToX = parseInt(scoreLineCanvas.width / (scoreArray.length / (i + 1)));
-        let moveToY = parseInt(scoreLineCanvas.height - (4 * (scoreArray[i] - 50)));
-        if (moveToY < 10000) {
-            scoreLineContext.lineTo(moveToX, moveToY);
+        // draw background line with darker color
+        let scoreArray = currentPoseScoreArray;
+        let lowerLimit = 80;
+        let upperLimit = 100;
+        let colorSolidChoices = ['red', 'orange', 'green'];
+        let colorStrokeChoices = ['pink', 'yellow', 'lightgreen'];
+        let selectionChoice = 0;
+        if (currentScore < lowerLimit) {
+            selectionChoice = 0;
         }
-    }
-    scoreLineContext.fill();
-    scoreLineContext.stroke();
-    // draw foreground line with lighter color
-    scoreLineContext.fillStyle = "rgba(0, 255, 50, 0)";
-    scoreLineContext.strokeStyle = [colorStrokeChoices[selectionChoice]];
-    scoreLineContext.lineWidth = 3;
-    scoreLineContext.beginPath();
-    scoreLineContext.moveTo(0, scoreLineCanvas.height);
-    let moveToX = 0;
-    let moveToY = 0;
-    for (let i = 0; i < scoreArray.length; i++) {
-        moveToX = parseInt(scoreLineCanvas.width / (scoreArray.length / (i + 1)));
-        moveToY = parseInt(scoreLineCanvas.height - (4 * (scoreArray[i] - 50)));
-        if (moveToY < 10000) {
-            scoreLineContext.lineTo(moveToX, moveToY);
+        else if (currentScore < upperLimit) {
+            selectionChoice = 1;
         }
+        else {
+            selectionChoice = 2;
+        }
+
+        scoreLineContext.fillStyle = "rgba(0, 255, 50, 0)";
+        scoreLineContext.strokeStyle = [colorSolidChoices[selectionChoice]];
+        scoreLineContext.lineWidth = 10;
+        scoreLineContext.beginPath();
+        scoreLineContext.moveTo(-(scoreLineCanvas.width * .1), scoreLineCanvas.height);
+        for (let i = 0; i < scoreArray.length; i++) {
+            let moveToX = parseInt(scoreLineCanvas.width / (scoreArray.length / (i + 1)));
+            let moveToY = parseInt(scoreLineCanvas.height - (4 * (scoreArray[i] - 50)));
+            if (moveToY < 10000) {
+                scoreLineContext.lineTo(moveToX, moveToY);
+            }
+        }
+        scoreLineContext.fill();
+        scoreLineContext.stroke();
+        // draw foreground line with lighter color
+        scoreLineContext.fillStyle = "rgba(0, 255, 50, 0)";
+        scoreLineContext.strokeStyle = [colorStrokeChoices[selectionChoice]];
+        scoreLineContext.lineWidth = 3;
+        scoreLineContext.beginPath();
+        scoreLineContext.moveTo(0, scoreLineCanvas.height);
+        let moveToX = 0;
+        let moveToY = 0;
+        for (let i = 0; i < scoreArray.length; i++) {
+            moveToX = parseInt(scoreLineCanvas.width / (scoreArray.length / (i + 1)));
+            moveToY = parseInt(scoreLineCanvas.height - (4 * (scoreArray[i] - 50)));
+            if (moveToY < 10000) {
+                scoreLineContext.lineTo(moveToX, moveToY);
+            }
+        }
+        scoreLineContext.fill();
+        scoreLineContext.stroke();
+        document.getElementById("now_line_lable").style.left = "96%";
+        document.getElementById("now_line_lable").style.top = (moveToY - 10) + "px";
     }
-    scoreLineContext.fill();
-    scoreLineContext.stroke();
-    document.getElementById("now_line_lable").style.left = "96%";
-    document.getElementById("now_line_lable").style.top = (moveToY - 10) + "px";
 
     // draw high score line
-    let highScore = calculateRollingAverageAndHighScore()[1];
-    scoreLineContext.fillStyle = "rgba(0, 255, 50, 0)";
-    scoreLineContext.strokeStyle = [colorStrokeChoices[selectionChoice]];
-    scoreLineContext.lineWidth = 3;
-    scoreLineContext.beginPath();
-    let highyPosition = parseInt(scoreLineCanvas.height - (4 * (highScore - 50)))
-    scoreLineContext.moveTo(0, highyPosition);
-    scoreLineContext.lineTo(scoreLineCanvas.width, highyPosition);
-    scoreLineContext.fill();
-    scoreLineContext.stroke();
+    if (drawMaxScore) {
+        let highScore = calculateRollingAverageAndHighScore()[1];
+        scoreLineContext.fillStyle = "rgba(0, 255, 50, 0)";
+        scoreLineContext.strokeStyle = [colorStrokeChoices[selectionChoice]];
+        scoreLineContext.lineWidth = 3;
+        scoreLineContext.beginPath();
+        let highyPosition = parseInt(scoreLineCanvas.height - (4 * (highScore - 50)))
+        scoreLineContext.moveTo(0, highyPosition);
+        scoreLineContext.lineTo(scoreLineCanvas.width, highyPosition);
+        scoreLineContext.fill();
+        scoreLineContext.stroke();
 
-    document.getElementById("high_line_lable").style.left = "96%";
-    document.getElementById("high_line_lable").style.top = (highyPosition - 10) + "px";
+        document.getElementById("high_line_lable").style.left = "96%";
+        document.getElementById("high_line_lable").style.top = (highyPosition - 10) + "px";
+    }
 
+    if (drawAvgScore) {
+        // draw average score line
+        let avgScore = calculateRollingAverageAndHighScore()[0];
+        scoreLineContext.fillStyle = "rgba(0, 255, 50, 0)";
+        scoreLineContext.strokeStyle = [colorStrokeChoices[selectionChoice]];
+        scoreLineContext.lineWidth = 3;
+        scoreLineContext.beginPath();
+        let avgyPosition = parseInt(scoreLineCanvas.height - (4 * (avgScore - 50)))
+        scoreLineContext.moveTo(0, avgyPosition);
+        scoreLineContext.lineTo(scoreLineCanvas.width, avgyPosition);
+        scoreLineContext.fill();
+        scoreLineContext.stroke();
 
-    // draw average score line
-    let avgScore = calculateRollingAverageAndHighScore()[0];
-    scoreLineContext.fillStyle = "rgba(0, 255, 50, 0)";
-    scoreLineContext.strokeStyle = [colorStrokeChoices[selectionChoice]];
-    scoreLineContext.lineWidth = 3;
-    scoreLineContext.beginPath();
-    let avgyPosition = parseInt(scoreLineCanvas.height - (4 * (avgScore - 50)))
-    scoreLineContext.moveTo(0, avgyPosition);
-    scoreLineContext.lineTo(scoreLineCanvas.width, avgyPosition);
-    scoreLineContext.fill();
-    scoreLineContext.stroke();
-
-    document.getElementById("avg_line_lable").style.left = "96%";
-    document.getElementById("avg_line_lable").style.top = (avgyPosition - 10) + "px";
+        document.getElementById("avg_line_lable").style.left = "96%";
+        document.getElementById("avg_line_lable").style.top = (avgyPosition - 10) + "px";
+    }
 }
 
 // draw circles on landmarks to indicate how well the angle matches the target pose angle
@@ -935,13 +1170,13 @@ function drawFeedbackCircles(angles) {
     let bad = 90;
     for (let i = 0; i < angles.length; i++) {
         if (angles[i] < good) {
-            drawingCanvas.fillStyle = 'green';
+            drawingCanvas.fillStyle = 'rgba(0, 255, 0,0.5)'; // green
         }
         else if (angles[i] < OK) {
-            drawingCanvas.fillStyle = 'yellow';
+            drawingCanvas.fillStyle = 'rgba(255, 255, 0,0.5)'; // yellow
         }
         else {
-            drawingCanvas.fillStyle = 'red';
+            drawingCanvas.fillStyle = 'rgba(255, 0, 0,0.5)'; // red
         }
         for (let j = 0; j < currentLandmarksArray.length; j++) {
             if (j == targetLandmarks[i]) {
@@ -954,24 +1189,19 @@ function drawFeedbackCircles(angles) {
                 }
             }
         }
-        for (let i = 0; i < landmarkStartPoints.length; i++) {
-            for (let j = 0; j < currentLandmarksArray.length; j++) {
-                if (j == landmarkStartPoints[i]) {
-                    drawingCanvas.lineWidth = 3;
-                    drawingCanvas.beginPath();
-                    drawingCanvas.moveTo(currentLandmarksArray[j][0] * userCanvas.width, currentLandmarksArray[j][1] * userCanvas.height);
-                    drawingCanvas.lineTo(currentLandmarksArray[j][0] * userCanvas.width, lowestY * userCanvas.height);
-                    drawingCanvas.stroke();
-                }
-            }
-        }
+        // for (let i = 0; i < landmarkStartPoints.length; i++) {
+        //     for (let j = 0; j < currentLandmarksArray.length; j++) {
+        //         if (j == landmarkStartPoints[i]) {
+        //             drawingCanvas.lineWidth = 3;
+        //             drawingCanvas.beginPath();
+        //             drawingCanvas.moveTo(currentLandmarksArray[j][0] * userCanvas.width, currentLandmarksArray[j][1] * userCanvas.height);
+        //             drawingCanvas.lineTo(currentLandmarksArray[j][0] * userCanvas.width, lowestY * userCanvas.height);
+        //             drawingCanvas.stroke();
+        //         }
+        //     }
+        // }
     }
 }
-
-function displayLastPoseInfo() {
-    return;
-}
-
 
 ////////////////////// calculations //////////////////////
 
@@ -987,12 +1217,14 @@ function getScores() {
     let bestIndividualAngleDifferencesArray = [];
     for (let i = 0; i < allYogaPoseInfo.length; i++) {
         if (allYogaPoseInfo[i].PoseNumber == currentPoseInThisWorkout) {
+
             var targetLandmarks = allYogaPoseInfo[i].Landmarks;
             var targetDistances = CalculateLandmarkNormalizedDistances(convertLandmarkArrayToObject(targetLandmarks));
             var differenceScore = CalculateDistanceDifferences(userDistances, targetDistances);
 
             var targetAngles = CalculateAllAngles(convertLandmarkArrayToObject(targetLandmarks));
-            var returneddifferenceAngle = CalculateAngleDifferences(userAngles, targetAngles, 0);
+            let poseHandicap = 10; // amount of play to allow for each angle difference
+            var returneddifferenceAngle = CalculateAngleDifferences(userAngles, targetAngles, poseHandicap);
             var differenceAngle = returneddifferenceAngle[0];
             var returnedindividualAngleDifferences = returneddifferenceAngle[1];
         }
@@ -1048,7 +1280,7 @@ function normalizedRecentScoreData() {
     let displayScore = parseInt(normalizedData);
     document.getElementById("score").innerText = "Now:  " + (displayScore + scoreModifierAmount) + "%";
     document.getElementById("avg_score").innerText = "Avg:  " + (calculateRollingAverageAndHighScore()[0] + scoreModifierAmount) + "%";
-    document.getElementById("high_score").innerText = "High:  " + (calculateRollingAverageAndHighScore()[1] + scoreModifierAmount) + "%";
+    // document.getElementById("high_score").innerText = "High:  " + (calculateRollingAverageAndHighScore()[1] + scoreModifierAmount) + "%";
 
     // push to array if length is less than 300
     if (currentPoseScoreArray.length < 300) {
@@ -1196,33 +1428,59 @@ function CalculateAngle(coord1, coord2, coord3) {
 // calculate angle of joints
 // middle landmark is the fixed point
 function CalculateAllAngles(landmarks) {
-    let allAngles = [];
+    let allLandmarkAngles = [];
+    let allToGroundAngles = [];
+    // shoulders
     let leftShoulderAngle = CalculateAngle(landmarks[13], landmarks[11], landmarks[23]);
     let rightShoulderAngle = CalculateAngle(landmarks[14], landmarks[12], landmarks[24]);
-
+    // elbows
     let leftElbowAngle = CalculateAngle(landmarks[11], landmarks[13], landmarks[15]);
     let rightElbowAngle = CalculateAngle(landmarks[12], landmarks[14], landmarks[16]);
+    // wrists
+    let leftWristAngle = CalculateAngle(landmarks[13], landmarks[15], landmarks[17]);
+    let rightWristAngle = CalculateAngle(landmarks[14], landmarks[16], landmarks[18]);
+    // feet
+    let leftFootAngle = CalculateAngle(landmarks[25], landmarks[27], landmarks[31]);
+    let rightFootAngle = CalculateAngle(landmarks[26], landmarks[28], landmarks[32]);
+    // hips    
+    let leftHipAngle = CalculateAngle(landmarks[11], landmarks[23], landmarks[25]);
+    let rightHipAngle = CalculateAngle(landmarks[12], landmarks[24], landmarks[26]);
+    // knees
+    let leftKneeAngle = CalculateAngle(landmarks[23], landmarks[25], landmarks[27]);
+    let rightKneeAngle = CalculateAngle(landmarks[24], landmarks[26], landmarks[28]);
 
+    // upper arms to ground
     let leftArmAngleToGroundMiddlePoint = { "x": landmarks[11].x, "y": 10, "z": landmarks[11].z };
     let leftArmAngleToGround = CalculateAngle(leftArmAngleToGroundMiddlePoint, landmarks[11], landmarks[13]);
     let rightArmAngleToGroundMiddlePoint = { "x": landmarks[12].x, "y": 10, "z": landmarks[12].z };
     let rightArmAngleToGround = CalculateAngle(rightArmAngleToGroundMiddlePoint, landmarks[12], landmarks[14]);
-
-    let leftHipAngle = CalculateAngle(landmarks[11], landmarks[23], landmarks[25]);
-    let rightHipAngle = CalculateAngle(landmarks[12], landmarks[24], landmarks[26]);
-
-    let leftKneeAngle = CalculateAngle(landmarks[23], landmarks[25], landmarks[27]);
-    let rightKneeAngle = CalculateAngle(landmarks[24], landmarks[26], landmarks[28]);
-
+    // lower arms to ground
+    let leftForearmAngleToGroundMiddlePoint = { "x": landmarks[13].x, "y": 10, "z": landmarks[13].z };
+    let leftForearmAngleToGround = CalculateAngle(leftForearmAngleToGroundMiddlePoint, landmarks[13], landmarks[15]);
+    let rightForearmAngleToGroundMiddlePoint = { "x": landmarks[14].x, "y": 10, "z": landmarks[14].z };
+    let rightForearmAngleToGround = CalculateAngle(rightForearmAngleToGroundMiddlePoint, landmarks[14], landmarks[16]);
+    // upper legs to ground
     let leftLegAngleToGroundMiddlePoint = { "x": landmarks[23].x, "y": 10, "z": landmarks[23].z };
     let leftLegAngleToGround = CalculateAngle(leftLegAngleToGroundMiddlePoint, landmarks[23], landmarks[25]);
     let rightLegAngleToGroundMiddlePoint = { "x": landmarks[24].x, "y": 10, "z": landmarks[24].z };
     let rightLegAngleToGround = CalculateAngle(rightLegAngleToGroundMiddlePoint, landmarks[24], landmarks[26]);
+    // lower legs to ground
+    let leftShinAngleToGroundMiddlePoint = { "x": landmarks[25].x, "y": 10, "z": landmarks[25].z };
+    let leftShinAngleToGround = CalculateAngle(leftShinAngleToGroundMiddlePoint, landmarks[25], landmarks[27]);
+    let rightShinAngleToGroundMiddlePoint = { "x": landmarks[26].x, "y": 10, "z": landmarks[26].z };
+    let rightShinAngleToGround = CalculateAngle(rightShinAngleToGroundMiddlePoint, landmarks[26], landmarks[28]);
+    // upper body to ground (shoulders to hips angle in relation to the ground)
+    let leftShoulderToHipsAngleToGroundMiddlePoint = { "x": landmarks[23].x, "y": 10, "z": landmarks[23].z };
+    let leftShoulderToHipsAngleToGround = CalculateAngle(leftShoulderToHipsAngleToGroundMiddlePoint, landmarks[23], landmarks[11]);
+    let rightShoulderToHipsAngleToGroundMiddlePoint = { "x": landmarks[24].x, "y": 10, "z": landmarks[24].z };
+    let rightShoulderToHipsAngleToGround = CalculateAngle(rightShoulderToHipsAngleToGroundMiddlePoint, landmarks[24], landmarks[12]);
 
-    let leftFootAngle = CalculateAngle(landmarks[25], landmarks[27], landmarks[31]);
-    let rightFootAngle = CalculateAngle(landmarks[26], landmarks[28], landmarks[32]);
-    allAngles = [leftShoulderAngle, rightShoulderAngle, leftElbowAngle, rightElbowAngle, leftArmAngleToGround, rightArmAngleToGround, leftHipAngle, rightHipAngle, leftKneeAngle, rightKneeAngle, leftLegAngleToGround, rightLegAngleToGround, leftFootAngle, rightFootAngle];
-    return allAngles;
+
+
+    allLandmarkAngles = [leftWristAngle, rightWristAngle, leftShoulderAngle, rightShoulderAngle, leftElbowAngle, rightElbowAngle, leftHipAngle, rightHipAngle, leftKneeAngle, rightKneeAngle, leftFootAngle, rightFootAngle];
+    allToGroundAngles = [leftArmAngleToGround, rightArmAngleToGround, leftForearmAngleToGround, rightForearmAngleToGround, leftLegAngleToGround, rightLegAngleToGround, leftShinAngleToGround, rightShinAngleToGround, leftShoulderToHipsAngleToGround, rightShoulderToHipsAngleToGround];
+    let angles = [leftWristAngle, rightWristAngle, leftShoulderAngle, rightShoulderAngle, leftElbowAngle, rightElbowAngle, leftHipAngle, rightHipAngle, leftKneeAngle, rightKneeAngle, leftFootAngle, rightFootAngle, leftArmAngleToGround, rightArmAngleToGround, leftForearmAngleToGround, rightForearmAngleToGround, leftLegAngleToGround, rightLegAngleToGround, leftShinAngleToGround, rightShinAngleToGround, leftShoulderToHipsAngleToGround, rightShoulderToHipsAngleToGround];
+    return angles
 }
 
 // take in the two angle arrays and find the differnence between them. poseHandicap is the amount of slack to give , eg. 10 allows 10 degrees of slack
@@ -1240,6 +1498,14 @@ function CalculateAngleDifferences(userAngles, targetAngles, poseHandicap) {
 }
 
 //////////////////////// data to analyze ////////////////////////////////
+
+// delay capture of high score since there is a bug that immediately captures the score
+function delayHighScoreCapture() {
+    setTimeout(function () {
+        thisPoseHighScore = 0;
+        console.log("reset high score" + thisPoseHighScore);
+    }, 3000);
+}
 
 // set a timer so datatosave is called ten times a second
 function timerToSaveData() {

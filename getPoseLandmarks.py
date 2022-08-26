@@ -356,4 +356,27 @@ def getPoseLandmarks(folderLocation):
         json.dump(jsonData, f)
 
 
-getPoseLandmarks("D:\Yoga project\YogaMVP3\mobile\workouts\Yoga_stretch")
+# getPoseLandmarks("D:\Yoga project\YogaMVP3\mobile\workouts\Yoga_stretch")
+
+
+def exerciseInfo(folderLocation):
+    jsonData = []
+    Instructor = "Fatima"
+    WorkoutName = "Sun Salutation"
+    Description = "Series of pre yoga stretches"
+    Difficulty = "Beginner"
+    DisplayImages = [2,4,7]
+    BestPoseImage = ['front','front','left','left','right','right','right','right','right','right','front','front',]
+
+    TargetAreas = [[11,13],[11,13],[23,25,11,13],[23,25,11,13],[23,11],[23,11,13],[23,11,13],[23,11],[25,23,11,13],[25,23,11,13],[11,13],[11,13]]
+    thisWorkoutInfo = {"Instructor": Instructor, "WorkoutName": WorkoutName, "Description": Description, "Difficulty": Difficulty, "DisplayImages": DisplayImages, "TargetAreas": TargetAreas, "BestPoseImage": BestPoseImage}
+    jsonData.append(thisWorkoutInfo)
+
+    print("JSON Object", jsonData)
+    saveLocation = folderLocation + "/exerciseInfo.json"
+    print("Saving to", saveLocation)
+    with open(saveLocation, 'w') as f:
+        json.dump(jsonData, f)
+
+exerciseInfo("D:\Yoga project\YogaMVP3\mobile\workouts\Sun_Salutation")
+    
